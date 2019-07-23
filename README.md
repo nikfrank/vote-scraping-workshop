@@ -169,6 +169,230 @@ now we can kill our server (ctrl + c in the shell) and run it again `$ node inde
 now when we load up [localhost:4000](http://localhost:4000) we'll see the html from the government pull up!
 
 
+now that we have the html, we ca use cheerio to find (aaaaaaaaand scrape) the data we want from the internet!
+
+let's inpect the page in the browser now to figure out where the data we want is
+
+...
+
+
+we should find the percentages in `table.TableData td:nth-child(4)`
+
+and the vote slips in `table.TableData td:nth-child(2)`
+
+
+## cheerio chap!
+
+
+let's `require` (aka import) the scraping library we installed earlier
+
+<sub>./index.js</sub>
+```js
+const express = require('express');
+const app = express();
+
+const rp = require('request-promise');
+
+const cheerio = require('cheerio');
+
+//...
+```
+
+so now we can pass our `html` response from the government site to `cheerio`
+
+
+<sub>./index.js</sub>
+```js
+//...
+
+app.get('*', (req, res)=>{
+
+  rp('https://votes21.bechirot.gov.il/')
+    .then(html => {
+      const page = cheerio.load(html);
+      
+      res.end(html);
+    });
+});
+
+//...
+```
+
+
+now we can make a function which will calculate the mandatim and return them in the response
+
+
+<sub>./index.js</sub>
+```js
+const express = require('express');
+const app = express();
+
+const rp = require('request-promise');
+
+const cheerio = require('cheerio');
+
+const calcMandatim = (page)=>{
+  return {};  
+};
+
+
+app.get('*', (req, res)=>{
+
+  rp('https://votes21.bechirot.gov.il/')
+    .then(html => {
+      const page = cheerio.load(html);
+      const mandatim = calcMandatim(page);
+      
+      res.json(mandatim);
+    });
+});
+
+app.listen(4000, ()=> console.log('server running'));
+```
+
+
+## the actual scraping
+
+now we get to use the cheerio API to grab the data out of the page
+
+### percentages
+
+we want to select the `td`s we found earlier, and grab their text
+
+<sub>./index.js</sub>
+```js
+//...
+
+const calcMandatim = (page)=>{
+  const percentages = page('table.TableData td:nth-child(4)')
+                       .map((i, td)=> page(td).text())
+                       .get();
+
+  
+  return {};  
+};
+
+//...
+```
+
+let's break that down
+
+```js
+ page('table.TableData td:nth-child(4)')
+```
+
+here we're using a CSS selector to query for the table divs (td) that we want
+
+```js
+   .map((i, td)=> page(td).text())
+```
+
+here we use the `.map` function from cheerio (which is backwards) to convert each of the tds
+
+then we use the `.text` function to grab the text out of the td
+
+
+```js
+   .get();
+```
+
+here we tell cheerio that we're done querying, and we want a normal JS value back.
+
+
+### vote slips
+
+we can do almost the exact same thing to get the party vote slips scraped out of the document
+
+
+<sub>./index.js</sub>
+```js
+//...
+
+  const parties = page('table.TableData td:nth-child(2)')
+                    .map((i, td)=> page(td).text())
+                    .get();
+
+//...
+```
+
+
+this time though, we'll grab the second child tds, which have the data we want
+
+
+### testing the scraped output
+
+if we want to check that our scraping is working, let's return our `percentages` and `parties` and [pull them up in the browser](http://localhost:4000)
+
+
+<sub>./index.js</sub>
+```js
+  return { percentages, parties };
+```
+
+
+## calculating the mandates
+
+
+### cut
+
+first let's apply the 3.25% cut
+
+<sub>./index.js</sub>
+```js
+  const madeTheCut = percentages.map(p => parseFloat(p))
+                                .filter(p => p >= 3.25);
+
+```
+
+first, we map the values (which are strings) into floats (decimal values) using javascript's `parseFloat` function (which will ignore the % sign)
+
+then we filter for only the parties which have more than 3.25%
+
+
+### total qualifying votes
+
+
+here we're going to use my favorite function in javascript: reduce
+
+we'll use it to add up all the percentages of qualifying parties
+
+<sub>./index.js</sub>
+```js
+  const total = madeTheCut.reduce((sum, p)=> sum + p, 0);
+```
+
+then we'll use that total as a basis to split the seats
+
+
+### final results
+
+the math we will use to calculate the number of seats a party gets is
+
+```
+120 * percentage party received / total qualifying votes percentage
+```
+
+this ignores some vote sharing rules which exist in our system, but that's ok - our job is to provide a good enough estimate on a live site
+
+we will calculate the seat totals and save them into an object to send back to the front end
+
+
+<sub>./index.js</sub>
+```js
+  let result = {};
+
+  for( let i = 0; i < madeTheCut.length; i++ ){
+    result[ parties[i] ] = Math.round( 120 * madeTheCut[i] / total );
+  }
+  
+  return result;
+}
+```
+
+now when we run our server, and navigate to [localhost:4000](http://localhost:4000) we should see the results of our election!
+
+
+
 
 
 ```
