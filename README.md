@@ -6,7 +6,7 @@ in this project, we're going to start from absolute scratch
 
 to bake a cake from scratch, one must first create the universe
 
-                  -- r p feynman
+                  -- carl sagan
 
 ```
 
